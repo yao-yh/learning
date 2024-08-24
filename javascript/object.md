@@ -328,104 +328,144 @@ Object.definProperty(
 )
 // 此时 for-in可以访问到constructor
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+## 类
+### 类定义
+```
+class Person {}
+const Person = class {}
+```
+__和函数表达式的区别__
+* 函数申明可以提升，类的申明不能提升
+```
+console.log(function1) // undefined
+var function1 = function() {}
+console.log(function1) // function() {}
+
+console.log(function2) // function2() {}
+function function2() {}
+console.log(function2) // function2() {}
+
+console.log(class1) // undefined
+var class1 = class {}
+console.log(class1) // class {}
+
+console.log(class2) // ReferenceError: class2 is not defined
+class class2 {}
+console.log(class2) // class class2 {}
+```
+### 类的构造函数和实例化
+constructor 关键字，用于在类中创造类的构造函数。不定义为空函数\
+使用new操作符实例化一个类，相当于使用new调用构造函数
+##### new 实现得功能
+* 内存中创建一个对象
+* 新对象内部得prototype特性会被赋值给构造函数得prototype属性
+* this 指向新对象
+* 函数(构造函数)给新的对象添加属性
+* 如果函数(构造函数)返回非空，则返回，否则返回空。
+
+__和函数表达式的区别__\
+类的构造函数必须以 new 调用，不然会报错。\
+普通对象构造函数如果不以new调用。会议全局 this (window)作为内部对象(this)\
+没有正式的类的数据类型。需要把js的类作为一种特殊函数
+
+类的prototyoe属性，也有一个constructor属性指向类本身\
+```javascript
+class Person{}
+console.log(Person.prototype) // { contructor: f() }
+console.log(Person === Person.prototype.contructor) // true
+```
+类作为特殊函数，也可以被作为参数传递
+```javascript
+class Person{ b() {}}
+function func1(cl1) {
+  return new cl1()
+}
+let a = func1(Person)
+console.log(a) // Person {}
+```
+### 实例、原型、类成员
+每次通过new调用，会执行构造函数。在函数内部，创建新的实例 this 并添加属性\
+构造函数执行完毕之后，仍然可以给实例继续添加新成员\
+每个实例都对应一个唯一的成员对象。所有成员不会再原型上共享\
+
+__为了方便实例之间共享方法，在类块中定义的方法都在原型上__
+```javascript
+class Person {
+  constructor() {
+    this.b = () => {}
+    this.c = 1
+  }
+  a() {}
+}
+let person1 = new Person()
+let person2 = new Person()
+console.log(person1 === person2) // true
+console.log(person1.a === person2.a) // true
+console.log(person1.b === person2.b) // false
+```
+__类块中不能添加原始值或者对象作为成员的数据__
+```javascript
+class Person{
+  a: 1
+}
+// Uncaught SyntaxError: Unexpected identifier 'a'
+``` 
+### 继承
+extends \
+继承，可以继承任何拥有 construct 和原型的对象。
+可以继承普通的构造函数
+```javascript
+class A1 {}
+class A2 extends A1 {}
+let a = new A2()
+console.log(a instanceof A1) // true
+console.log(a instanceof A2) // true
+
+function B1() {}
+class B2 extends B1 {}
+let b = new B2()
+console.log(b instanceof B1) // true
+console.log(b instanceof B2) // true
+```
+#### 构造函数、HomeObject、super
+派生类的方法可以通过 super 关键词访问原型。关键字只能在派生类使用。并且只限于类的构造函数、实例方法、静态方法
+```javascript
+class A1 {
+  constructor() {
+    console.log('A1 constructor')
+  }
+  a() {
+    console.log('A1 a')
+  }
+  static b() {
+    console.log('A1 b')
+  }
+}
+class A2 extends A1 {
+  constructor() {
+    super()
+    console.log('A2 constructor')
+  }
+  a() {
+    super.a()
+    console.log('A2 a')
+  }
+  static b() {
+    super.b()
+    console.log('A1 b')
+  }
+}
+let a = new A2()
+a.a()
+A2.b()
+a.b()
+```
+```javascript
+A1 constructor
+A2 constructor
+A1 a
+A2 a
+A1 b
+A1 b
+Uncaught TypeError: a.b is not a function
+```
