@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>搜索结果页面</title>
+    <script>
+        // 假设这是一个用于显示用户搜索关键词的网页
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取URL参数中的搜索关键词
+            var searchKeyword = new URLSearchParams(window.location.search).get('keyword');
+            
+            // 直接将搜索关键词显示在页面上
+            //document.getElementById('searchResult').innerHTML = '您搜索的关键词是：' + searchKeyword + '';
+            document.getElementById('searchResult').textContent = '您搜索的关键词是：' + searchKeyword + '';
+        });
+        // file:///D:/learning/安全/xss/反射.html?keyword=<img src=x onerror="alert('XSS')">
+    </script>
+</head>
+<body>
+    <h1 id="searchResult">搜索结果</h1>
+</body>
+</html>
