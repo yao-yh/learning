@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@babel/core": "^7.22.20",
-    "@babel/plugin-transform-react-jsx": "^7.22.15",
+    "@babel/preset-typescript": "^7.22.20",
     "@rollup/plugin-babel": "^6.0.3",
     "@rollup/plugin-commonjs": "^25.0.3",
     "@rollup/plugin-html": "^1.0.2",
@@ -33,6 +33,7 @@
     "rollup-plugin-styles": "^4.0.0",
     "rollup-plugin-vue": "^6.0.0",
     "vue": "^3.3.4",
+    "vue-tsc": "^2.2.2",
     "ws": "^8.13.0"
   }
 }

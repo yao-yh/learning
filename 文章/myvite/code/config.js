@@ -2,6 +2,8 @@ import { merge } from 'lodash-es'
 import { pathToFileURL } from 'node:url'
 import path from 'node:path'
 
+const OPTIMIZER_PATH = '/node_modules/.myvite/deps'
+
 const createConfig = async (root) => {
   const defaultConfig = {
     server: {
@@ -23,4 +25,4 @@ const createConfig = async (root) => {
   return config
 }
 
-export { createConfig }
+export { createConfig, OPTIMIZER_PATH }
