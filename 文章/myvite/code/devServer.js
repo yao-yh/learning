@@ -14,11 +14,15 @@ import { parse as vueParse, compileTemplate, compileScript } from 'vue/compiler-
 import { OPTIMIZER_PATH } from './config.js'
 import { transformSync } from 'esbuild'
 
+import { createWebSockerServer, hotModules } from './hmr.js'
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const CLIENT_FILE = 'client.js'
 const CLIENT_PATH = `/@myvite/${CLIENT_FILE}`
+
+let ROOT = ''
 
 const app = new Koa()
 
@@ -40,16 +44,24 @@ function getContent(ctxBodyStream) {
 }
 
 function modifyImport(content) {
+  // 修改 import 
+  // 对于外部依赖，引用 .myvite/deps/ 下的
+  // 对于相对路径的引用，改成针对root的绝对路径
+  // 这里只写了两个case。还有很多都可以补充，比如 png 等图片的使用。alias 中 '@' 的转换等
+
   const imports = parse(content)[0]
   const magicSting = new MagicSting(content)
   for (const item of imports) {
     if (!/^(\.|\/)/.test(item.n)) {
+      // 例如 import { createApp } from 'vue'
       const { n, s, e } = item
       magicSting.overwrite(s, e, `${OPTIMIZER_PATH}/${n}.js`)
     } else if (/.(svg|jpg|png)/.test(item.n)) {
       const { n, s, e } = item
       magicSting.overwrite(s, e, `${n}?import`)
     } else if (/.(vue|css)/.test(item.n) && item.n.startsWith('.')) {
+      // 例如 import App from './App.vue'
+      // 需要修改为相对路径
       const { s, e } = item
       let { n } = item
       if (n.startsWith('.')) {
@@ -68,7 +80,7 @@ async function modifyHtml(ctx) {
 }
 
 async function modifyVueToJs(ctx, url) {
-  const fileName = ctx.request.url.split('/').pop()
+  const fileName = ctx.request.url.split('/').pop().split('?')[0]
 
   ctx.set('Content-Type', 'text/javascript')
 
@@ -78,7 +90,8 @@ async function modifyVueToJs(ctx, url) {
 
   let code = []
   if (descriptor.styles.length) {
-    code.push(`import "${url}?type=style&index=0&scoped=7a7a37b1&lang.css"`)
+    // 如果当前文件有style。就加一句import css的逻辑
+    code.push(`import "${url.split('?')[0]}?type=style&index=0&scoped=7a7a37b1&lang.css"`)
   }
   
   const { content: vueScriptCode, bindings } = compileScript(descriptor, {
@@ -97,6 +110,8 @@ async function modifyVueToJs(ctx, url) {
   }).code
 
   code = [
+    `import { createHotContext } from "${CLIENT_PATH}";`,
+    `const hotContext = createHotContext("${url.split('?')[0]}");`,
     ...code,
     vueScriptCodeJs.replace(
       'export default',
@@ -104,7 +119,26 @@ async function modifyVueToJs(ctx, url) {
     ),
     vueTemplateCode,
     `main.render = render`,
-    `export default main`,
+    `export _rerender_only = true`,
+    `main.__hmrId = "${fileName}";
+typeof __VUE_HMR_RUNTIME__ !== "undefined" && __VUE_HMR_RUNTIME__.createRecord(main.__hmrId, main);
+hotContext.accept((mod) => {
+  if (!mod) return;
+  const { default: updated, _rerender_only } = mod;
+  if (_rerender_only) {
+    __VUE_HMR_RUNTIME__.rerender(updated.__hmrId, updated.render);
+  } else {
+    __VUE_HMR_RUNTIME__.reload(updated.__hmrId, updated);
+  }
+});`,
+    `const _export_sfc = (sfc, props) => {
+    const target = sfc.__vccOpts || sfc;
+    for (const [key,val] of props) {
+        target[key] = val;
+    }
+    return target;
+}`,
+    `export default _export_sfc(main, [["render", render], ["__scopeId", "data-v-7a7a37b1"], ["__file", "D:/code/test/123123123/for_test/${fileName}"]]);`,
   ].join('\n')
 
   ctx.body = modifyImport(code)
@@ -149,13 +183,21 @@ async function modifyCss(ctx) {
 }
 
 async function modifySvg(ctx) {
-  ctx.set('Content-Type', 'text/javascript')
-  const content = await getContent(ctx.body)
-  const code = [
-    `export default "data:image/svg+xml,`,
-    encodeURIComponent(content),
-    `"`,
-  ].join('')
+
+  let code = ""
+  if (ctx.request.url == '/vite.svg') {
+    ctx.set('Content-Type', 'image/svg+xml')
+    code = fs.readFileSync(path.join(__dirname, 'vite.svg'), 'utf-8')
+  } else {
+    ctx.set('Content-Type', 'text/javascript')
+    const content = await getContent(ctx.body)
+    code = [
+      `export default "data:image/svg+xml,`,
+      encodeURIComponent(content),
+      `"`,
+    ].join('')
+  }
+
   ctx.body = code
 }
 
@@ -174,8 +216,10 @@ async function modifyResponse(ctx) {
     await modifyTs(ctx)
   } else if (uri.endsWith('.css')) {
     await modifyCss(ctx)
+    hotModules.set(path.join(ROOT, ctx.request.url), ctx.request.url)
   } else if (uri.endsWith('.vue') && !ctx.request.url.includes('?type=style')) {
     await modifyVueToJs(ctx, ctx.request.url)
+    hotModules.set(path.join(ROOT, ctx.request.url), ctx.request.url)
   } else if (uri.endsWith('.vue') && ctx.request.url.includes('?type=style')) {
     await modifyVueToCss(ctx)
   } else if (uri.endsWith('.svg')) {
@@ -184,6 +228,7 @@ async function modifyResponse(ctx) {
 }
 
 const createServer = (root, config) => {
+  ROOT = root
   const { server: serverConfig } = config
   const { hostName, port } = serverConfig
 
@@ -204,6 +249,7 @@ const createServer = (root, config) => {
 
   server.listen(port, hostName, () => {
     console.log(`start dev server:   http://${hostName}:${port}/`)
+    createWebSockerServer(root, server)
   })
 }
 export { createServer }
