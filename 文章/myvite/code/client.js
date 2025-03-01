@@ -27,11 +27,6 @@ class HMRContext {
     }
   }
 
-  prune(cb) {
-    // 注册回调，当文件被需要被移除时，执行回调
-    this.hmrClient.pruneMap.set(this.ownerPath, cb)
-  }
-
 }
 
 // 热更新的客户端，用于处理热更新的消息，并回调对应 HMRContext 的处理函数
@@ -39,8 +34,6 @@ class HMRClient {
   constructor() {
     // 用于存储所有的 HMRContext
     this.hotModulesMap = new Map()
-    // 用于存储所有的需要移除的回调
-    this.pruneMap = new Map()
 
     this.initWebSocket()
   }
@@ -83,8 +76,7 @@ class HMRClient {
   }
   
   async importUpdatedModule({ path, timestamp }) {
-    const url = path.split(`?`)[0]
-    const importPromise = import(`${url}?t=${timestamp}`)
+    const importPromise = import(`${path}?t=${timestamp}`)
     importPromise.catch(() => {
       window.location.reload()
     })
@@ -98,19 +90,19 @@ function createHotContext(ownerPath) {
   return new HMRContext(hmrClient, ownerPath)
 }
 
-function updateStyle(content) {
-  const style = document.createElement('style')
-  style.setAttribute('type', 'text/css')
-  style.textContent = content
-  document.head.append(style)
+// 把所有得样式标签存储，方便后续更新
+const sheetsMap = new Map();
+
+function updateStyle(id, content) {
+  let style = sheetsMap.get(id);
+  if (!style) {
+    const style = document.createElement('style')
+    style.setAttribute('type', 'text/css')
+    style.setAttribute("myvite-id", id);
+    style.textContent = content
+    document.head.append(style)
+  } 
+  sheetsMap.set(id, style);
 }
 
-function removeStyle(id) {
-  const style = sheetsMap.get(id);
-  if (style) {
-      document.head.removeChild(style);
-      sheetsMap.delete(id);
-  }
-}
-
-export { updateStyle, removeStyle, createHotContext }
+export { updateStyle, createHotContext }

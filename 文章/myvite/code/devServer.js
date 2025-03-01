@@ -10,17 +10,12 @@ import { dirname } from "path"
 import { parse } from 'es-module-lexer'
 import MagicSting from 'magic-string'
 
-import { parse as vueParse, compileTemplate, compileScript } from 'vue/compiler-sfc'
-import { OPTIMIZER_PATH } from './config.js'
-import { transformSync } from 'esbuild'
-
+import { OPTIMIZER_PATH, CLIENT_PATH, CLIENT_FILE } from './config.js'
+import { extractJsFromVue, extractCssFromVue } from './plugins/vue.js'
 import { createWebSockerServer, hotModules } from './hmr.js'
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-const CLIENT_FILE = 'client.js'
-const CLIENT_PATH = `/@myvite/${CLIENT_FILE}`
 
 let ROOT = ''
 
@@ -80,88 +75,16 @@ async function modifyHtml(ctx) {
 }
 
 async function modifyVueToJs(ctx, url) {
-  const fileName = ctx.request.url.split('/').pop().split('?')[0]
-
   ctx.set('Content-Type', 'text/javascript')
-
   const content = await getContent(ctx.body)
-
-  const { descriptor } = vueParse(content, { filename: fileName })
-
-  let code = []
-  if (descriptor.styles.length) {
-    // 如果当前文件有style。就加一句import css的逻辑
-    code.push(`import "${url.split('?')[0]}?type=style&index=0&scoped=7a7a37b1&lang.css"`)
-  }
-  
-  const { content: vueScriptCode, bindings } = compileScript(descriptor, {
-    source: descriptor.scriptSetup.content
-  })
-
-  const vueTemplateCode = compileTemplate({
-    source: descriptor.template.content,
-    filename: fileName,
-    compilerOptions: { bindingMetadata: bindings }
-  }).code
-
-  const vueScriptCodeJs = transformSync(vueScriptCode, {
-    loader: 'ts',
-    target: 'esnext'
-  }).code
-
-  code = [
-    `import { createHotContext } from "${CLIENT_PATH}";`,
-    `const hotContext = createHotContext("${url.split('?')[0]}");`,
-    ...code,
-    vueScriptCodeJs.replace(
-      'export default',
-      `const main =`
-    ),
-    vueTemplateCode,
-    `main.render = render`,
-    `export _rerender_only = true`,
-    `main.__hmrId = "${fileName}";
-typeof __VUE_HMR_RUNTIME__ !== "undefined" && __VUE_HMR_RUNTIME__.createRecord(main.__hmrId, main);
-hotContext.accept((mod) => {
-  if (!mod) return;
-  const { default: updated, _rerender_only } = mod;
-  if (_rerender_only) {
-    __VUE_HMR_RUNTIME__.rerender(updated.__hmrId, updated.render);
-  } else {
-    __VUE_HMR_RUNTIME__.reload(updated.__hmrId, updated);
-  }
-});`,
-    `const _export_sfc = (sfc, props) => {
-    const target = sfc.__vccOpts || sfc;
-    for (const [key,val] of props) {
-        target[key] = val;
-    }
-    return target;
-}`,
-    `export default _export_sfc(main, [["render", render], ["__scopeId", "data-v-7a7a37b1"], ["__file", "D:/code/test/123123123/for_test/${fileName}"]]);`,
-  ].join('\n')
-
+  const { code } = extractJsFromVue(content, url)
   ctx.body = modifyImport(code)
 }
 
-async function modifyVueToCss(ctx) {
+async function modifyVueToCss(ctx, url) {
   ctx.set('Content-Type', 'text/javascript')
-
   const content = await getContent(ctx.body)
-
-  const { descriptor } = vueParse(content)
-
-  const cssContent = descriptor.styles.reduce(
-    (init, item) => init + item.content,
-    ''
-  )
-
-  ctx.set('Content-Type', 'text/javascript')
-  const code = [
-    `import { updateStyle } from "${CLIENT_PATH}"`,
-    `let css = ${JSON.stringify(cssContent)}`,
-    `updateStyle(css)`,
-  ].join('\n')
+  const { code } = extractCssFromVue(content, url)
   ctx.body = code
 }
 
@@ -174,11 +97,16 @@ async function modifyTs(ctx) {
 async function modifyCss(ctx) {
   ctx.set('Content-Type', 'text/javascript')
   const content = await getContent(ctx.body)
+  const fileName = ctx.request.url.split('/').pop().split('?')[0]
   const code = [
+    `import { createHotContext } from "${CLIENT_PATH}";`,
+    `const hotContext = createHotContext("${ctx.request.url}");`,
     `import { updateStyle } from "${CLIENT_PATH}"`,
     `let css = ${JSON.stringify(content)}`,
-    `updateStyle(css)`,
-  ].join('\n')
+    `updateStyle("${ctx.request.url}", css)`,
+    `hotContext.accept()`,
+    ].join('\n')
+
   ctx.body = code
 }
 
@@ -221,7 +149,8 @@ async function modifyResponse(ctx) {
     await modifyVueToJs(ctx, ctx.request.url)
     hotModules.set(path.join(ROOT, ctx.request.url), ctx.request.url)
   } else if (uri.endsWith('.vue') && ctx.request.url.includes('?type=style')) {
-    await modifyVueToCss(ctx)
+    await modifyVueToCss(ctx, ctx.request.url)
+    hotModules.set(path.join(ROOT, ctx.request.url), ctx.request.url)
   } else if (uri.endsWith('.svg')) {
     await modifySvg(ctx)
   }

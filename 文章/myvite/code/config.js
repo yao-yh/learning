@@ -3,6 +3,8 @@ import { pathToFileURL } from 'node:url'
 import path from 'node:path'
 
 const OPTIMIZER_PATH = '/node_modules/.myvite/deps'
+const CLIENT_FILE = 'client.js'
+const CLIENT_PATH = `/@myvite/${CLIENT_FILE}`
 
 const createConfig = async (root) => {
   const defaultConfig = {
@@ -25,4 +27,4 @@ const createConfig = async (root) => {
   return config
 }
 
-export { createConfig, OPTIMIZER_PATH }
+export { createConfig, OPTIMIZER_PATH, CLIENT_PATH, CLIENT_FILE }
