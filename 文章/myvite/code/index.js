@@ -9,7 +9,8 @@ import { createConfig } from './config.js'
 const config = await createConfig(root)
 
 if (mode === 'build') {
-  // todo
+  const { createBuild } = await import('./build.js')
+  createBuild(root, config)
 } else if (mode === 'dev' || mode === 'serve') {
   const {createOptimizer} = await import('./optimize.js')
   createOptimizer(root)
